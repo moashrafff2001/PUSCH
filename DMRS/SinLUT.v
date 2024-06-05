@@ -1,36 +1,36 @@
 module SinLUT (
-	input [12:0] phase,
+	input [14:0] phase,
 	output reg signed [8:0] sin_value,
 	output reg signed [8:0] cos_value
 );
 
-localparam [8:0] table_size = 256;
+parameter table_size = 256;
 wire [7:0] lut [0:table_size-1];
-reg [22:0] ind;
+reg [24:0] ind;
 reg [9:0] index, index_c;
 reg [1:0] quad, quad_c;
 
 // Phase for cosine Calculations
-wire [12:0] phase_c;
-assign phase_c = phase + 13'b0100000000000; // phase_c = phase + 0.25;
+wire [14:0] phase_c;
+assign phase_c = phase + 15'b010000000000000; // phase_c = phase + 0.25;
 
 always@(*)
 	begin			
-		// Index calculation Q10.0*Q0.13 = Q10.13
+		// Index calculation Q10.0*Q0.15 = Q10.15
 		ind = (phase << 10) - (phase << 2); // phase * (table_size-1) * 4
 		
 		// Rounding the index
-		index = ind[22:13] + ind[12]; // Q10.13 -> Q10.0 (Rounding)
+		index = ind[24:15] + ind[14]; // Q10.15 -> Q10.0 (Rounding)
 		
-		quad = phase[12:11];
+		quad = phase[14:13];
 		
-		// Index calculation Q9.0*Q0.13 = Q9.13
+		// Index calculation Q9.0*Q0.15 = Q9.15
 		ind = (phase_c << 10) - (phase_c << 2); // phase * (table_size-1) * 4
 		
 		// Rounding the index
-		index_c = ind[22:13] + ind[12]; // Q9.13 -> Q9.0 (Rounding)
+		index_c = ind[24:15] + ind[14]; // Q9.15 -> Q9.0 (Rounding)
 		
-		quad_c = phase_c[12:11];
+		quad_c = phase_c[14:13];
 		
 		//calculation of the sine value
 		case (quad)
