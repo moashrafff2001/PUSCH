@@ -21,6 +21,7 @@ module PUSCH_Top (
 	input [5:0] N_Rapid,
 	input [15:0] N_Rnti,
 	input [9:0] N_cell_ID,
+	input Config,
 
 	// Inputs for Reference Signal
 	input [3:0] N_slot_frame,
@@ -29,7 +30,9 @@ module PUSCH_Top (
 	
 	// Inputs for Resource Element Mapper
 	input [3:0] N_symbol,
-	input [10:0] N_sc,
+	input [10:0] N_sc_start, // subcarrier starting point
+	input [3:0] Sym_Start_REM ,
+    input [3:0] Sym_End_REM , 
 	
 	output signed [14:0] Data_r,
 	output signed [14:0] Data_i,
@@ -63,6 +66,7 @@ wire [127:0] data_LDPC_HARQ;
 
 // Between HARQ and Interleaver
 wire data_HARQ_Interleaver;
+wire data_not_repeated;
 
 // Between Interleaver and Scrambler
 wire data_Interleaver_Scrambler;
@@ -83,6 +87,8 @@ wire signed [WIDTH_FFT-1:0] Data_FFT_REM_i, Data_FFT_REM_r;
 
 // Between Resource Mapper and IFFT
 wire signed [WIDTH_IFFT-1:0] Data_REM_IFFT_i, Data_REM_IFFT_r;
+wire [10:0] Write_addr;
+wire Sym_Done_REM ,RE_Done_REM;
 
 // Between IFFT and Cyclic Prefix
 wire signed [WIDTH_IFFT-1:0] Data_IFFT_CP_i, Data_IFFT_CP_r;
@@ -132,7 +138,7 @@ interleaver interleaver_Block (
     .data_in(data_HARQ_Interleaver), // fix the size
     .data_out(data_Interleaver_Scrambler), 
     .valid_out(Interleaver_valid), 
-    data_not_repeated
+    .data_not_repeated(data_not_repeated)
 );
 
 
@@ -140,15 +146,15 @@ interleaver interleaver_Block (
 SC_TOP Scrambler_Block ( 
     .CLK_TOP(clk) , 
     .RST_TOP(reset) , 
-    .EN_TOP(Interleaver_valid) , 
+    EN_TOP , 
     Shift_TOP , 
-    Config_TOP , // Higher Layer Parameter is Configured --> 1 else --> 0 
+    .Config_TOP(Config) , // Higher Layer Parameter is Configured --> 1 else --> 0 
     .N_cellID_TOP(N_cell_ID),
     .N_Rapid_TOP(N_Rapid) , 
     .N_Rnti_TOP(N_Rnti) , 
     .TOP_IN(data_Interleaver_Scrambler) , 
-    TOP_BUSY_IN , 
-    TOP_Valid_IN,
+    .TOP_BUSY_IN(data_not_repeated) , 
+    .TOP_Valid_IN(Interleaver_valid) ,
 
     .SC_OUT(data_Scrambler_Modulator) , 
     .SC_Valid_OUT(Scrambler_valid)
@@ -171,6 +177,25 @@ Mapper_TOP#(.LUT_WIDTH(LUT_WIDTH), .OUT_WIDTH(OUT_WIDTH)) Mapper_Block (
     [10:0] Wr_addr ,
     write_enable 
 );
+
+
+// Memory Between Mapper and FFT
+
+
+// FFT
+Top #(.WIDTH(WIDTH_FFT)) FFT_Block
+(
+    .clk(clk),
+	.rst(reset),
+    .di_re(Data_Mod_FFT_r),
+    .di_im(Data_Mod_FFT_i),
+    Flag,
+    done,
+    .do_re(Data_FFT_REM_r),
+    .do_im(Data_FFT_REM_i),
+    do_en,
+    address
+    );
 
 
 // Reference Signal
@@ -203,22 +228,6 @@ DMRS_Mem DMRS_Mem_Block (
 );
 
 
-// FFT
-Top #(.WIDTH(WIDTH_FFT)) FFT_Block
-(
-    .clk(clk),
-	.rst(reset),
-    .di_re(Data_Mod_FFT_r),
-    .di_im(Data_Mod_FFT_i),
-    Flag,
-    done,
-    .do_re(Data_FFT_REM_r),
-    .do_im(Data_FFT_REM_i),
-    do_en,
-    address
-    );
-
-
 // Recource Element Mapper
 REM_TOP #(.MEM_DEPTH(MEM_DEPTH), .WRITE_ADDR_SHIFT(WRITE_ADDR_SHIFT),
     .DATA_WIDTH(DATA_WIDTH), .FFT_Len(WIDTH_FFT), .DMRS_Len(WIDTH_DMRS)) REM_Block
@@ -227,11 +236,11 @@ REM_TOP #(.MEM_DEPTH(MEM_DEPTH), .WRITE_ADDR_SHIFT(WRITE_ADDR_SHIFT),
     .RST_RE_TOP(reset) , 
     .EN_RE_TOP ,
 
-    [3:0] FrameIndex_TOP , 
-    [10:0] N_sc_TOP , // subcarrier starting point
+    [3:0] FrameIndex_TOP , // will be deleted
+    .N_sc_TOP(N_sc_start) , // subcarrier starting point
     .N_rb_TOP(N_rb) ,     // no. of RBs allocated
-    unsigned [3:0] Sym_Start_TOP ,
-    unsigned [3:0] Sym_End_TOP ,  
+    .Sym_Start_TOP(Sym_Start_REM) ,
+    .Sym_End_TOP(Sym_End_REM) ,  
 
 
     .Dmrs_I_TOP(DMRS_r_mem) , 
@@ -248,11 +257,11 @@ REM_TOP #(.MEM_DEPTH(MEM_DEPTH), .WRITE_ADDR_SHIFT(WRITE_ADDR_SHIFT),
     signed [FFT_Len-1:0] RE_Real_TOP , 
     signed [FFT_Len-1:0] RE_Imj_TOP , 
     .RE_Valid_OUT_TOP(Re_Mapper_valid) ,
-    [10:0] Wr_addr_TOP , 
+    .Wr_addr_TOP(Write_addr) , 
     [10:0] FFT_addr_TOP , // fft memory read address ely abli 
     .DMRS_addr_TOP(DMRS_ptr) , // dmrs memory ely abli 
-    Sym_Done_TOP , 
-    RE_Done_TOP , 
+    .Sym_Done_TOP(Sym_Done_REM) , 
+    .RE_Done_TOP(Sym_Done_REM) , 
 
     read_enable_TOP , // in
     
@@ -262,18 +271,18 @@ REM_TOP #(.MEM_DEPTH(MEM_DEPTH), .WRITE_ADDR_SHIFT(WRITE_ADDR_SHIFT),
 );
 
 
-// Pin Pong Memory
+// Pin Pong Memory from REM to IFFT
 PingPongMemory #(.MEM_DEPTH(MEM_DEPTH), .WRITE_ADDR_SHIFT(WRITE_ADDR_SHIFT),
     .DATA_WIDTH(DATA_WIDTH)) PingPong_Mem_Block
 	(
     .CLK(clk),
     .RST(reset),
     [DATA_WIDTH-1:0] data_in,
-    read_enable,
-    write_enable,
-    Sym_Done,
-    RE_Done , 
-    [10:0] write_addr,  // External write address input
+    read_enable, // form IFFT to Ping
+    write_enable, // form REM to Ping
+    .Sym_Done(Sym_Done_REM),
+    .RE_Done(Sym_Done_REM) , 
+    .write_addr(Write_addr),  // External write address input
     [10:0] read_addr,   // External read address input
 
     [DATA_WIDTH-1:0] data_out , // Output data
