@@ -49,12 +49,16 @@ parameter WIDTH_FFT = 18, WIDTH_IFFT = 26;
 parameter WIDTH_DMRS = 9;
 
 // Mapper parameters
-parameter LUT_WIDTH = 17, OUT_WIDTH = 34 ;
+parameter LUT_WIDTH = 18, OUT_WIDTH = 36 ;
+
+// Mapper FFT Memory
+parameter MEM_DEPTH_FFT = 1200;
+
 
 // REM parameters
-parameter MEM_DEPTH = 2048,
+parameter MEM_DEPTH_IFFT = 2048,
 parameter WRITE_ADDR_SHIFT = 424; // Address shift for zero padding
-parameter DATA_WIDTH = 24;
+parameter DATA_WIDTH = 36;
 
 
 ////////////////// Wires connecting between each two blocks //////////////////
@@ -76,6 +80,11 @@ wire data_Scrambler_Modulator;
 
 // Between Modulator and FFT
 wire signed [WIDTH_FFT-1:0] Data_Mod_FFT_i, Data_Mod_FFT_r;
+wire signed [WIDTH_FFT-1:0] Data_Mod_Mem_i, Data_Mod_Mem_r;
+wire Mod_done;
+wire PINGPONG_SWITCH;
+wire [10:0] Wr_addr_Mod;
+wire wrt_enable_Mod;
 
 // Between DMRS and Resource Mapper
 wire signed [8:0] DMRS_i, DMRS_r, DMRS_i_mem, DMRS_r_mem;
@@ -84,11 +93,17 @@ wire [9:0] DMRS_ptr;
 
 // Between FFT and Resource Mapper
 wire signed [WIDTH_FFT-1:0] Data_FFT_REM_i, Data_FFT_REM_r;
+wire [10:0] Write_addr_FFT;
+wire FFT_done;
 
 // Between Resource Mapper and IFFT
 wire signed [WIDTH_IFFT-1:0] Data_REM_IFFT_i, Data_REM_IFFT_r;
-wire [10:0] Write_addr;
+wire [10:0] Write_addr_IFFT;
 wire Sym_Done_REM ,RE_Done_REM;
+
+// Between Resource Mapper and PinPong Memory
+wire signed [WIDTH_IFFT-1:0] Data_REM_Mem_i, Data_REM_Mem_r;
+
 
 // Between IFFT and Cyclic Prefix
 wire signed [WIDTH_IFFT-1:0] Data_IFFT_CP_i, Data_IFFT_CP_r;
@@ -166,35 +181,70 @@ Mapper_TOP#(.LUT_WIDTH(LUT_WIDTH), .OUT_WIDTH(OUT_WIDTH)) Mapper_Block (
     .Serial_IN(data_Scrambler_Modulator) , // ex
     .CLK_Mod(clk) , 
     .RST_Mod(reset) , 
-    .EN_Mod(Scrambler_valid) , 
-    Valid_Mod_IN , 
+    EN_Mod , 
+    .Valid_Mod_IN(Scrambler_valid) , 
     .Order_Mod(modulation_order) ,
 
-    Mem_Done ,
     .Mod_Valid_OUT(Modulator_valid) , 
-    .Mod_OUT(Data_Mod_FFT_i),
-    MOD_DONE , 
-    [10:0] Wr_addr ,
-    write_enable 
+    .Mod_OUT_I(Data_Mod_Mem_r),
+    .Mod_OUT_Q(Data_Mod_Mem_i),
+
+    .MOD_DONE(Mod_done) , 
+    .Wr_addr(Wr_addr_Mod) ,
+    .write_enable(wrt_enable_Mod) ,
+    .PINGPONG_SWITCH(PINGPONG_SWITCH) 
 );
 
 
-// Memory Between Mapper and FFT
+// Real part Memory Between Mapper and FFT
+PingPongMem_MOD #(.MEM_DEPTH(MEM_DEPTH_FFT), .DATA_WIDTH(WIDTH_FFT)) Mod_FFT_Mem_r_Block (
+    .CLK(clk),
+    .RST(reset),
+    EN,
+
+    .data_in(Data_Mod_Mem_r),
+    read_enable,
+    .write_enable(wrt_enable_Mod),
+    Mod_Valid_OUT ,
+    .PINGPONG_SWITCH(PINGPONG_SWITCH) ,  
+    .MOD_DONE(Mod_done) , 
+    .write_addr(Wr_addr_Mod),  // External write address input
+    read_addr,   // External read address input
+    .data_out(Data_Mod_FFT_r)  // Output data
+);
+
+
+// Imaginary part Memory Between Mapper and FFT
+PingPongMem_MOD #(.MEM_DEPTH(MEM_DEPTH_FFT), .DATA_WIDTH(WIDTH_FFT)) Mod_FFT_Mem_i_Block (
+    .CLK(clk),
+    .RST(reset),
+    EN,
+
+    .data_in(Data_Mod_Mem_i),
+    read_enable,
+    .write_enable(wrt_enable_Mod),
+    Mod_Valid_OUT ,
+    .PINGPONG_SWITCH(PINGPONG_SWITCH) ,
+    .MOD_DONE(Mod_done) , 
+    .write_addr(Wr_addr_Mod),  // External write address input
+    read_addr,   // External read address input
+    .data_out(Data_Mod_FFT_i)  // Output data
+);
 
 
 // FFT
-Top #(.WIDTH(WIDTH_FFT)) FFT_Block
-(
+Top #(.WIDTH(WIDTH_FFT)) FFT_Block (
     .clk(clk),
 	.rst(reset),
     .di_re(Data_Mod_FFT_r),
     .di_im(Data_Mod_FFT_i),
     Flag,
-    done,
+    .done(Mod_done),
     .do_re(Data_FFT_REM_r),
     .do_im(Data_FFT_REM_i),
-    do_en,
-    address
+    .do_en(FFT_valid),
+    .address(Write_addr_FFT),
+    .Finish(FFT_done)
     );
 
 
@@ -204,7 +254,7 @@ TopDMRS #(.WIDTH(WIDTH_DMRS)) DMRS_Block (
 	.reset(reset),
 	enable,
 	.N_slot_frame(N_slot_frame),
-	.n_ID(N_cell_ID),
+	.N_cell_ID(N_cell_ID),
 	.N_rb(N_rb),
 	.En_hopping(En_hopping),
 	c,
@@ -229,14 +279,13 @@ DMRS_Mem DMRS_Mem_Block (
 
 
 // Recource Element Mapper
-REM_TOP #(.MEM_DEPTH(MEM_DEPTH), .WRITE_ADDR_SHIFT(WRITE_ADDR_SHIFT),
+REM_TOP #(.MEM_DEPTH(MEM_DEPTH_IFFT), .WRITE_ADDR_SHIFT(WRITE_ADDR_SHIFT),
     .DATA_WIDTH(DATA_WIDTH), .FFT_Len(WIDTH_FFT), .DMRS_Len(WIDTH_DMRS)) REM_Block
 
    (.CLK_RE_TOP(clk) , 
     .RST_RE_TOP(reset) , 
     .EN_RE_TOP ,
 
-    [3:0] FrameIndex_TOP , // will be deleted
     .N_sc_TOP(N_sc_start) , // subcarrier starting point
     .N_rb_TOP(N_rb) ,     // no. of RBs allocated
     .Sym_Start_TOP(Sym_Start_REM) ,
@@ -250,16 +299,16 @@ REM_TOP #(.MEM_DEPTH(MEM_DEPTH), .WRITE_ADDR_SHIFT(WRITE_ADDR_SHIFT),
 
     .FFT_I_TOP(Data_FFT_REM_r) , 
     .FFT_Q_TOP(Data_FFT_REM_i) , 
-    FFT_Valid_In_TOP ,
-    FFT_Done_TOP , // flag reports that fft finished writing in memory & all symbols is valid
-    
-    
-    signed [FFT_Len-1:0] RE_Real_TOP , 
-    signed [FFT_Len-1:0] RE_Imj_TOP , 
-    .RE_Valid_OUT_TOP(Re_Mapper_valid) ,
-    .Wr_addr_TOP(Write_addr) , 
-    [10:0] FFT_addr_TOP , // fft memory read address ely abli 
+    .FFT_Valid_In_TOP(FFT_valid) ,
+    .FFT_Done_TOP(FFT_done) , // flag reports that fft finished writing in memory & all symbols is valid
     .DMRS_addr_TOP(DMRS_ptr) , // dmrs memory ely abli 
+    
+    
+    signed [FFT_Len-1:0] RE_Real_TOP , // to PingPong
+    signed [FFT_Len-1:0] RE_Imj_TOP , // to PingPong
+    .RE_Valid_OUT_TOP(Re_Mapper_valid) ,
+    .Wr_addr_TOP(Write_addr_IFFT) , 
+    .FFT_addr_TOP(Write_addr_FFT) , // fft memory read address ely abli 
     .Sym_Done_TOP(Sym_Done_REM) , 
     .RE_Done_TOP(Sym_Done_REM) , 
 
@@ -269,6 +318,7 @@ REM_TOP #(.MEM_DEPTH(MEM_DEPTH), .WRITE_ADDR_SHIFT(WRITE_ADDR_SHIFT),
     [DATA_WIDTH-1:0] PingPongOUT_TOP , 
     Ping_VALID
 );
+
 
 
 // Pin Pong Memory from REM to IFFT
