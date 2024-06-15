@@ -34,8 +34,8 @@ module PUSCH_Top (
 	input [3:0] Sym_Start_REM ,
     input [3:0] Sym_End_REM , 
 	
-	output signed [14:0] Data_r,
-	output signed [14:0] Data_i,
+	output signed [WIDTH_IFFT-1:0] Data_r,
+	output signed [WIDTH_IFFT-1:0] Data_i,
 	output Data_valid
 	);
 
@@ -45,6 +45,9 @@ wire CRC_valid, LDPC_valid, HARQ_valid, Interleaver_valid, Scrambler_valid,
 	 Modulator_valid, DMRS_valid, FFT_valid, Re_Mapper_valid, IFFT_valid, Ping_valid;
 
 // Parameters for each block
+// CRC parameters
+ parameter SEED = 16'h0000;
+
 parameter WIDTH_FFT = 18, WIDTH_IFFT = 26;
 parameter WIDTH_DMRS = 9;
 
@@ -63,10 +66,10 @@ parameter DATA_WIDTH = 36;
 
 ////////////////// Wires connecting between each two blocks //////////////////
 // Between CRC and LDPC
-
+wire [19:0] Data_CRC_LDPC;
 
 // Between LDPC and HARQ
-wire [127:0] data_LDPC_HARQ;
+wire [127:0] Data_LDPC_HARQ;
 
 // Between HARQ and Interleaver
 wire data_HARQ_Interleaver;
@@ -111,17 +114,23 @@ wire signed [WIDTH_IFFT-1:0] Data_IFFT_CP_i, Data_IFFT_CP_r;
 
 //////////////////////// Blocks Instantiations ////////////////////////
 // CRC
-
+CRC #(.SEED(SEED)) ( 
+   .CLK(clk) ,          
+   .RST(reset) ,          
+   .DATA(Data_in) ,         
+   .ACTIVE(enable) ,       
+   .data_out(Data_CRC_LDPC),          
+   .Valid(CRC_valid)         
+  );
 
 
 // LDPC
 LDPC LDPC_Block (
     .CLK(clk),
     .RST(reset),
-    DATA,
-    ACTIVE,
-    enable,
-    .data_out(data_LDPC_HARQ),          
+    .DATA(Data_CRC_LDPC),
+    .ACTIVE(CRC_valid),
+    .data_out(Data_LDPC_HARQ),          
     .Valid(LDPC_valid)   
 );
 
@@ -252,12 +261,10 @@ Top #(.WIDTH(WIDTH_FFT)) FFT_Block (
 TopDMRS #(.WIDTH(WIDTH_DMRS)) DMRS_Block (
 	.clk(clk),
 	.reset(reset),
-	enable,
 	.N_slot_frame(N_slot_frame),
 	.N_cell_ID(N_cell_ID),
 	.N_rb(N_rb),
 	.En_hopping(En_hopping),
-	c,
 	.DMRS_r(DMRS_r),
 	.DMRS_i(DMRS_i),
 	.DMRS_valid(DMRS_valid),
@@ -280,7 +287,7 @@ DMRS_Mem DMRS_Mem_Block (
 
 // Recource Element Mapper
 REM_TOP #(.MEM_DEPTH(MEM_DEPTH_IFFT), .WRITE_ADDR_SHIFT(WRITE_ADDR_SHIFT),
-    .DATA_WIDTH(DATA_WIDTH), .FFT_Len(WIDTH_FFT), .DMRS_Len(WIDTH_DMRS)) REM_Block
+    .DATA_WIDTH(WIDTH_IFFT), .FFT_Len(WIDTH_FFT), .DMRS_Len(WIDTH_DMRS)) REM_Block
 
    (.CLK_RE_TOP(clk) , 
     .RST_RE_TOP(reset) , 
@@ -301,62 +308,38 @@ REM_TOP #(.MEM_DEPTH(MEM_DEPTH_IFFT), .WRITE_ADDR_SHIFT(WRITE_ADDR_SHIFT),
     .FFT_Q_TOP(Data_FFT_REM_i) , 
     .FFT_Valid_In_TOP(FFT_valid) ,
     .FFT_Done_TOP(FFT_done) , // flag reports that fft finished writing in memory & all symbols is valid
-    .DMRS_addr_TOP(DMRS_ptr) , // dmrs memory ely abli 
+    .FFT_addr_TOP(Write_addr_FFT) , // fft memory read address ely abli 
     
     
-    signed [FFT_Len-1:0] RE_Real_TOP , // to PingPong
-    signed [FFT_Len-1:0] RE_Imj_TOP , // to PingPong
+    .RE_Real_TOP(Data_REM_Mem_r) , // to PingPong
+    .RE_Imj_TOP(Data_REM_Mem_i) , // to PingPong
     .RE_Valid_OUT_TOP(Re_Mapper_valid) ,
     .Wr_addr_TOP(Write_addr_IFFT) , 
-    .FFT_addr_TOP(Write_addr_FFT) , // fft memory read address ely abli 
+    .DMRS_addr_TOP(DMRS_ptr) , // dmrs memory ely abli 
     .Sym_Done_TOP(Sym_Done_REM) , 
-    .RE_Done_TOP(Sym_Done_REM) , 
+    .RE_Done_TOP(RE_Done_REM) , 
 
-    read_enable_TOP , // in
-    
-    [10:0] read_addr_TOP , // in
-    [DATA_WIDTH-1:0] PingPongOUT_TOP , 
-    Ping_VALID
+    .PingPongOUT_I_TOP(Data_REM_IFFT_r) , 
+    .PingPongOUT_Q_TOP(Data_REM_IFFT_i) , 
+
+    output wire Ping_VALID_I , 
+    output wire Ping_VALID_Q
 );
 
 
-
-// Pin Pong Memory from REM to IFFT
-PingPongMemory #(.MEM_DEPTH(MEM_DEPTH), .WRITE_ADDR_SHIFT(WRITE_ADDR_SHIFT),
-    .DATA_WIDTH(DATA_WIDTH)) PingPong_Mem_Block
-	(
-    .CLK(clk),
-    .RST(reset),
-    [DATA_WIDTH-1:0] data_in,
-    read_enable, // form IFFT to Ping
-    write_enable, // form REM to Ping
-    .Sym_Done(Sym_Done_REM),
-    .RE_Done(Sym_Done_REM) , 
-    .write_addr(Write_addr),  // External write address input
-    [10:0] read_addr,   // External read address input
-
-    [DATA_WIDTH-1:0] data_out , // Output data
-    .Ping_VALID(Ping_valid)  
-);
-
-
-// IFFT
-SDF2_TOP #(.WIDTH(WIDTH_IFFT)) IFFT_Block
+// IFFT and Cyclic Prefix
+IFFT_CP_TOP #(.WIDTH(WIDTH_IFFT)) IFFT_Block
 (
 	.clk(clk),
 	.rst(reset),
 	.data_in1_r(Data_REM_IFFT_r),
 	.data_in1_i(Data_REM_IFFT_i),
 	.VALID(Ping_valid),
-	READy_out,
-	.data_out1_r(Data_IFFT_CP_r),
-	.data_out1_i(Data_IFFT_CP_i)
+	
+	.READy_out(Data_valid),
+	.data_out_r(Data_IFFT_CP_r),
+	.data_out_i(Data_IFFT_CP_i)
 );
-
-
-// Cyclic Prefix
-
-
 
 
 
