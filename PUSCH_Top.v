@@ -42,7 +42,7 @@ module PUSCH_Top (
 // Internal wires in the system
 // Valids of each block
 wire CRC_valid, LDPC_valid, HARQ_valid, Interleaver_valid, Scrambler_valid,
-     Modulator_valid, DMRS_valid, FFT_valid, Re_Mapper_valid, Ping_valid, IFFT_valid;
+     Modulator_valid, DMRS_valid, FFT_valid, IFFT_valid;
 
 // Parameters for each block
 // CRC parameters
@@ -53,6 +53,7 @@ parameter WIDTH_DMRS = 9;
 
 // HARQ_Z
 parameter Z_harq = 9'd2;
+parameter data_size_harq = 17'd100;
 
 // Mapper parameters
 parameter LUT_WIDTH = 18, OUT_WIDTH = 36 ;
@@ -85,7 +86,7 @@ wire data_not_repeated;
 wire data_Scrambler_Modulator;
 
 // Between Modulator and PinPong Memory (2 memories 1 for i and one for Q) 
-wire signed [WIDTH_FFT-1:0] Data_Mod_FFT_i, Data_Mod_FFT_r;
+wire signed [WIDTH_FFT-1:0] Data_Mod_Mem_i, Data_Mod_Mem_r;
 wire PINGPONG_SWITCH;
 wire Mod_done;
 wire wrt_enable_Mod;
@@ -93,7 +94,7 @@ wire [10:0] Wr_addr_Mod;
 wire [10:0] Last_addr_Mod;
 
 // Between PinPong Memory and FFT 
-wire signed [WIDTH_FFT-1:0] Data_Mod_Mem_i, Data_Mod_Mem_r;
+wire signed [WIDTH_FFT-1:0] Data_Mod_FFT_i, Data_Mod_FFT_r;
 
 // Between DMRS and Resource Mapper
 wire signed [8:0] DMRS_i, DMRS_r, DMRS_i_mem, DMRS_r_mem;
@@ -107,6 +108,8 @@ wire FFT_done;
 
 // Between Resource Mapper and IFFT_CP_TOP
 wire signed [WIDTH_IFFT-1:0] Data_REM_IFFT_i, Data_REM_IFFT_r;
+wire Ping_VALID_I;
+wire Ping_VALID_Q;
 
 
 //////////////////////// Blocks Instantiations ////////////////////////
@@ -142,8 +145,8 @@ RateMatching_and_HARQ RateMatching_and_HARQ_Block (
     .data_in(data_LDPC_HARQ),       // Input data stream
     .RV(rv_number),                 // Redundancy Version (0, 1, 2, or 3)
     .PN(process_number),            // process number (0, 1, 2, or 3)
-    data_size,             // total size of the ip data given from the LDPC
-    .G(available_coded_bits),             // size of the op Rv given from the base station 
+    .data_size(data_size_harq),     // total size of the ip data given from the LDPC
+    .G(available_coded_bits),       // size of the op Rv given from the base station 
     .op_RV_bit(data_HARQ_Interleaver), 
     .valid_out(HARQ_valid)  // Output rate-matched data
 );
@@ -209,13 +212,12 @@ PingPongMem_MOD #(.MEM_DEPTH(MEM_DEPTH_FFT), .DATA_WIDTH(WIDTH_FFT)) Mod_FFT_Mem
     EN,
 
     .data_in(Data_Mod_Mem_r),
-    read_enable,
+    .Last_addr.(Last_addr_Mod),
     .write_enable(wrt_enable_Mod),
-    Mod_Valid_OUT ,
+    .Mod_Valid_OUT(Modulator_valid) ,
     .PINGPONG_SWITCH(PINGPONG_SWITCH) ,  
-    .MOD_DONE(Mod_done) , 
+    .MOD_DONE(Mod_done) ,
     .write_addr(Wr_addr_Mod),  // External write address input
-    read_addr,   // External read address input
     .data_out(Data_Mod_FFT_r)  // Output data
 );
 
@@ -227,13 +229,12 @@ PingPongMem_MOD #(.MEM_DEPTH(MEM_DEPTH_FFT), .DATA_WIDTH(WIDTH_FFT)) Mod_FFT_Mem
     EN,
 
     .data_in(Data_Mod_Mem_i),
-    read_enable,
+    .Last_addr.(Last_addr_Mod),
     .write_enable(wrt_enable_Mod),
-    Mod_Valid_OUT ,
-    .PINGPONG_SWITCH(PINGPONG_SWITCH) ,
-    .MOD_DONE(Mod_done) , 
+    .Mod_Valid_OUT(Modulator_valid) ,
+    .PINGPONG_SWITCH(PINGPONG_SWITCH) ,  
+    .MOD_DONE(Mod_done) ,
     .write_addr(Wr_addr_Mod),  // External write address input
-    read_addr,   // External read address input
     .data_out(Data_Mod_FFT_i)  // Output data
 );
 
@@ -244,14 +245,14 @@ Top #(.WIDTH(WIDTH_FFT)) FFT_Block (
     .rst(reset),
     .di_re(Data_Mod_FFT_r),
     .di_im(Data_Mod_FFT_i),
-    Flag,
+    .Flag(Modulator_valid),
     .done(Mod_done),
     .do_re(Data_FFT_REM_r),
     .do_im(Data_FFT_REM_i),
     .do_en(FFT_valid),
     .address(Write_addr_FFT),
     .Finish(FFT_done)
-    );
+);
 
 
 // Reference Signal
@@ -286,9 +287,10 @@ DMRS_Mem DMRS_Mem_Block (
 REM_TOP #(.MEM_DEPTH(MEM_DEPTH_IFFT), .WRITE_ADDR_SHIFT(WRITE_ADDR_SHIFT),
     .DATA_WIDTH(WIDTH_IFFT), .FFT_Len(WIDTH_FFT), .DMRS_Len(WIDTH_DMRS)) REM_Block
 
-   (.CLK_RE_TOP(clk) , 
+   (
+    .CLK_RE_TOP(clk) , 
     .RST_RE_TOP(reset) , 
-    .EN_RE_TOP ,
+    EN_RE_TOP ,
 
     .N_sc_TOP(N_sc_start) , // subcarrier starting point
     .N_rb_TOP(N_rb) ,     // no. of RBs allocated
@@ -307,20 +309,14 @@ REM_TOP #(.MEM_DEPTH(MEM_DEPTH_IFFT), .WRITE_ADDR_SHIFT(WRITE_ADDR_SHIFT),
     .FFT_Done_TOP(FFT_done) , // flag reports that fft finished writing in memory & all symbols is valid
     .FFT_addr_TOP(Write_addr_FFT) , // fft memory read address ely abli 
     
-    
-    .RE_Real_TOP(Data_REM_Mem_r) , // to PingPong
-    .RE_Imj_TOP(Data_REM_Mem_i) , // to PingPong
-    .RE_Valid_OUT_TOP(Re_Mapper_valid) ,
-    .Wr_addr_TOP(Write_addr_IFFT) , 
+    //output
     .DMRS_addr_TOP(DMRS_ptr) , // dmrs memory ely abli 
-    .Sym_Done_TOP(Sym_Done_REM) , 
-    .RE_Done_TOP(RE_Done_REM) , 
 
     .PingPongOUT_I_TOP(Data_REM_IFFT_r) , 
     .PingPongOUT_Q_TOP(Data_REM_IFFT_i) , 
 
-    output wire Ping_VALID_I , 
-    output wire Ping_VALID_Q
+    .Ping_VALID_I (Ping_VALID_I), 
+    .Ping_VALID_Q (Ping_VALID_Q)
 );
 
 
@@ -331,7 +327,7 @@ IFFT_CP_TOP #(.WIDTH(WIDTH_IFFT)) IFFT_Block
     .rst(reset),
     .data_in1_r(Data_REM_IFFT_r),
     .data_in1_i(Data_REM_IFFT_i),
-    .VALID(Ping_valid),
+    .VALID(Ping_VALID_I),
     
     .READy_out(Data_valid),
     .data_out_r(Data_IFFT_CP_r),
