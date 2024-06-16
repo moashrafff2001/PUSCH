@@ -1,55 +1,58 @@
 module PUSCH_Top (
-	input clk,
-	input reset,
-	input enable,
+    input clk,
+    input reset,
+    input enable,
 
-	// Inputs for CRC
-	input Data_in,
+    // Inputs for CRC
+    input Data_in,
 
-	// Inputs for LDPC
-	input [1:0] base_graph,
+    // Inputs for LDPC
+    input [1:0] base_graph,
 
-	// Inputs for Rate Matching & HARQ
-	input [1:0] rv_number,
-	input [3:0] process_number,
-	input [16:0] available_coded_bits,
+    // Inputs for Rate Matching & HARQ
+    input [1:0] rv_number,
+    input [3:0] process_number,
+    input [16:0] available_coded_bits,
 
-	// Inputs for Interleaver
-	input [2:0] modulation_order,
+    // Inputs for Interleaver
+    input [2:0] modulation_order,
 
-	// Inputs for Scrambler
-	input [5:0] N_Rapid,
-	input [15:0] N_Rnti,
-	input [9:0] N_cell_ID,
-	input Config,
+    // Inputs for Scrambler
+    input [5:0] N_Rapid,
+    input [15:0] N_Rnti,
+    input [9:0] N_cell_ID,
+    input Config,
 
-	// Inputs for Reference Signal
-	input [3:0] N_slot_frame,
-	input [6:0] N_rb,
-	input [1:0] En_hopping,
-	
-	// Inputs for Resource Element Mapper
-	input [3:0] N_symbol,
-	input [10:0] N_sc_start, // subcarrier starting point
-	input [3:0] Sym_Start_REM ,
+    // Inputs for Reference Signal
+    input [3:0] N_slot_frame,
+    input [6:0] N_rb,
+    input [1:0] En_hopping,
+    
+    // Inputs for Resource Element Mapper
+    input [3:0] N_symbol,
+    input [10:0] N_sc_start, // subcarrier starting point
+    input [3:0] Sym_Start_REM ,
     input [3:0] Sym_End_REM , 
-	
-	output signed [WIDTH_IFFT-1:0] Data_r,
-	output signed [WIDTH_IFFT-1:0] Data_i,
-	output Data_valid
-	);
+    
+    output signed [WIDTH_IFFT-1:0] Data_r,
+    output signed [WIDTH_IFFT-1:0] Data_i,
+    output Data_valid
+    );
 
 // Internal wires in the system
 // Valids of each block
 wire CRC_valid, LDPC_valid, HARQ_valid, Interleaver_valid, Scrambler_valid,
-	 Modulator_valid, DMRS_valid, FFT_valid, Re_Mapper_valid, IFFT_valid, Ping_valid;
+     Modulator_valid, DMRS_valid, FFT_valid, Re_Mapper_valid, Ping_valid, IFFT_valid;
 
 // Parameters for each block
 // CRC parameters
- parameter SEED = 16'h0000;
+parameter SEED = 16'h0000;
 
 parameter WIDTH_FFT = 18, WIDTH_IFFT = 26;
 parameter WIDTH_DMRS = 9;
+
+// HARQ_Z
+parameter Z_harq = 9'd2;
 
 // Mapper parameters
 parameter LUT_WIDTH = 18, OUT_WIDTH = 36 ;
@@ -73,21 +76,24 @@ wire [127:0] Data_LDPC_HARQ;
 
 // Between HARQ and Interleaver
 wire data_HARQ_Interleaver;
-wire data_not_repeated;
 
 // Between Interleaver and Scrambler
 wire data_Interleaver_Scrambler;
+wire data_not_repeated;
 
 // Between Scrambler and Modulator
 wire data_Scrambler_Modulator;
 
-// Between Modulator and FFT
+// Between Modulator and PinPong Memory (2 memories 1 for i and one for Q) 
 wire signed [WIDTH_FFT-1:0] Data_Mod_FFT_i, Data_Mod_FFT_r;
-wire signed [WIDTH_FFT-1:0] Data_Mod_Mem_i, Data_Mod_Mem_r;
-wire Mod_done;
 wire PINGPONG_SWITCH;
-wire [10:0] Wr_addr_Mod;
+wire Mod_done;
 wire wrt_enable_Mod;
+wire [10:0] Wr_addr_Mod;
+wire [10:0] Last_addr_Mod;
+
+// Between PinPong Memory and FFT 
+wire signed [WIDTH_FFT-1:0] Data_Mod_Mem_i, Data_Mod_Mem_r;
 
 // Between DMRS and Resource Mapper
 wire signed [8:0] DMRS_i, DMRS_r, DMRS_i_mem, DMRS_r_mem;
@@ -99,17 +105,8 @@ wire signed [WIDTH_FFT-1:0] Data_FFT_REM_i, Data_FFT_REM_r;
 wire [10:0] Write_addr_FFT;
 wire FFT_done;
 
-// Between Resource Mapper and IFFT
+// Between Resource Mapper and IFFT_CP_TOP
 wire signed [WIDTH_IFFT-1:0] Data_REM_IFFT_i, Data_REM_IFFT_r;
-wire [10:0] Write_addr_IFFT;
-wire Sym_Done_REM ,RE_Done_REM;
-
-// Between Resource Mapper and PinPong Memory
-wire signed [WIDTH_IFFT-1:0] Data_REM_Mem_i, Data_REM_Mem_r;
-
-
-// Between IFFT and Cyclic Prefix
-wire signed [WIDTH_IFFT-1:0] Data_IFFT_CP_i, Data_IFFT_CP_r;
 
 
 //////////////////////// Blocks Instantiations ////////////////////////
@@ -138,13 +135,13 @@ LDPC LDPC_Block (
 // Rate Matching & HARQ
 RateMatching_and_HARQ RateMatching_and_HARQ_Block (
     .clk(clk),
-	.rst(reset),
+    .rst(reset),
     .Active(LDPC_valid),
-    .base_graph(base_graph),     // Base graph selection (1 or 2)
-    Z,              // lifting factor
-    .data_in(data_LDPC_HARQ),      // Input data stream
-    .RV(rv_number),             // Redundancy Version (0, 1, 2, or 3)
-    .PN(process_number),             // process number (0, 1, 2, or 3)
+    .base_graph(base_graph),        // Base graph selection (1 or 2)
+    .Z(Z_harq),                     // lifting factor
+    .data_in(data_LDPC_HARQ),       // Input data stream
+    .RV(rv_number),                 // Redundancy Version (0, 1, 2, or 3)
+    .PN(process_number),            // process number (0, 1, 2, or 3)
     data_size,             // total size of the ip data given from the LDPC
     .G(available_coded_bits),             // size of the op Rv given from the base station 
     .op_RV_bit(data_HARQ_Interleaver), 
@@ -155,7 +152,7 @@ RateMatching_and_HARQ RateMatching_and_HARQ_Block (
 // Bit Interleaver
 interleaver interleaver_Block (
     .clk(clk),
-	.reset(reset),
+    .reset(reset),
     .Active(HARQ_valid),
     .E(available_coded_bits),
     .Qm(modulation_order),
@@ -244,7 +241,7 @@ PingPongMem_MOD #(.MEM_DEPTH(MEM_DEPTH_FFT), .DATA_WIDTH(WIDTH_FFT)) Mod_FFT_Mem
 // FFT
 Top #(.WIDTH(WIDTH_FFT)) FFT_Block (
     .clk(clk),
-	.rst(reset),
+    .rst(reset),
     .di_re(Data_Mod_FFT_r),
     .di_im(Data_Mod_FFT_i),
     Flag,
@@ -259,23 +256,23 @@ Top #(.WIDTH(WIDTH_FFT)) FFT_Block (
 
 // Reference Signal
 TopDMRS #(.WIDTH(WIDTH_DMRS)) DMRS_Block (
-	.clk(clk),
-	.reset(reset),
-	.N_slot_frame(N_slot_frame),
-	.N_cell_ID(N_cell_ID),
-	.N_rb(N_rb),
-	.En_hopping(En_hopping),
-	.DMRS_r(DMRS_r),
-	.DMRS_i(DMRS_i),
-	.DMRS_valid(DMRS_valid),
-	.DMRS_finished(DMRS_finished)
+    .clk(clk),
+    .reset(reset),
+    .N_slot_frame(N_slot_frame),
+    .N_cell_ID(N_cell_ID),
+    .N_rb(N_rb),
+    .En_hopping(En_hopping),
+    .DMRS_r(DMRS_r),
+    .DMRS_i(DMRS_i),
+    .DMRS_valid(DMRS_valid),
+    .DMRS_finished(DMRS_finished)
 );
 
 
 // Memory Between DMRS and Resource element Mapper
 DMRS_Mem DMRS_Mem_Block (
     .clk(clk),
-	.reset(reset),
+    .reset(reset),
     .DMRS_valid(DMRS_valid),
     .read_ptr(DMRS_ptr);
     .DMRS_r_in(DMRS_r),
@@ -330,15 +327,15 @@ REM_TOP #(.MEM_DEPTH(MEM_DEPTH_IFFT), .WRITE_ADDR_SHIFT(WRITE_ADDR_SHIFT),
 // IFFT and Cyclic Prefix
 IFFT_CP_TOP #(.WIDTH(WIDTH_IFFT)) IFFT_Block
 (
-	.clk(clk),
-	.rst(reset),
-	.data_in1_r(Data_REM_IFFT_r),
-	.data_in1_i(Data_REM_IFFT_i),
-	.VALID(Ping_valid),
-	
-	.READy_out(Data_valid),
-	.data_out_r(Data_IFFT_CP_r),
-	.data_out_i(Data_IFFT_CP_i)
+    .clk(clk),
+    .rst(reset),
+    .data_in1_r(Data_REM_IFFT_r),
+    .data_in1_i(Data_REM_IFFT_i),
+    .VALID(Ping_valid),
+    
+    .READy_out(Data_valid),
+    .data_out_r(Data_IFFT_CP_r),
+    .data_out_i(Data_IFFT_CP_i)
 );
 
 
