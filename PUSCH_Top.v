@@ -1,4 +1,5 @@
-module PUSCH_Top (
+module PUSCH_Top #(parameter WIDTH_IFFT = 26)
+    ( 
     input clk,
     input reset,
     input enable,
@@ -48,7 +49,7 @@ wire CRC_valid, LDPC_valid, HARQ_valid, Interleaver_valid, Scrambler_valid,
 // CRC parameters
 parameter SEED = 16'h0000;
 
-parameter WIDTH_FFT = 18, WIDTH_IFFT = 26;
+parameter WIDTH_FFT = 18;
 parameter WIDTH_DMRS = 9;
 
 // HARQ_Z
@@ -63,7 +64,7 @@ parameter MEM_DEPTH_FFT = 1200;
 
 
 // REM parameters
-parameter MEM_DEPTH_IFFT = 2048,
+parameter MEM_DEPTH_IFFT = 2048;
 parameter WRITE_ADDR_SHIFT = 424; // Address shift for zero padding
 parameter DATA_WIDTH = 36;
 
@@ -83,7 +84,7 @@ wire data_Interleaver_Scrambler;
 wire data_not_repeated;
 
 // Between Scrambler and Modulator
-wire data_Scrambler_Modulator;
+wire data_Scrambler_Modulator, zeyad_enable;
 
 // Between Modulator and PinPong Memory (2 memories 1 for i and one for Q) 
 wire signed [WIDTH_FFT-1:0] Data_Mod_Mem_i, Data_Mod_Mem_r;
@@ -120,7 +121,8 @@ CRC #(.SEED(SEED)) (
    .DATA(Data_in) ,         
    .ACTIVE(enable) ,       
    .data_out(Data_CRC_LDPC),          
-   .Valid(CRC_valid)         
+   .Valid(CRC_valid),
+   .enable(zeyad_enable)         
   );
 
 
@@ -170,8 +172,8 @@ interleaver interleaver_Block (
 SC_TOP Scrambler_Block ( 
     .CLK_TOP(clk) , 
     .RST_TOP(reset) , 
-    EN_TOP , 
-    Shift_TOP , 
+    .EN_TOP(zeyad_enable) , 
+    .Shift_TOP(zeyad_enable) , 
     .Config_TOP(Config) , // Higher Layer Parameter is Configured --> 1 else --> 0 
     .N_cellID_TOP(N_cell_ID),
     .N_Rapid_TOP(N_Rapid) , 
@@ -190,7 +192,7 @@ Mapper_TOP#(.LUT_WIDTH(LUT_WIDTH), .OUT_WIDTH(OUT_WIDTH)) Mapper_Block (
     .Serial_IN(data_Scrambler_Modulator) , // ex
     .CLK_Mod(clk) , 
     .RST_Mod(reset) , 
-    EN_Mod , 
+    .EN_Mod(zeyad_enable) , 
     .Valid_Mod_IN(Scrambler_valid) , 
     .Order_Mod(modulation_order) ,
 
@@ -209,10 +211,10 @@ Mapper_TOP#(.LUT_WIDTH(LUT_WIDTH), .OUT_WIDTH(OUT_WIDTH)) Mapper_Block (
 PingPongMem_MOD #(.MEM_DEPTH(MEM_DEPTH_FFT), .DATA_WIDTH(WIDTH_FFT)) Mod_FFT_Mem_r_Block (
     .CLK(clk),
     .RST(reset),
-    EN,
+    .EN(zeyad_enable),
 
     .data_in(Data_Mod_Mem_r),
-    .Last_addr.(Last_addr_Mod),
+    .Last_addr(Last_addr_Mod),
     .write_enable(wrt_enable_Mod),
     .Mod_Valid_OUT(Modulator_valid) ,
     .PINGPONG_SWITCH(PINGPONG_SWITCH) ,  
@@ -226,10 +228,10 @@ PingPongMem_MOD #(.MEM_DEPTH(MEM_DEPTH_FFT), .DATA_WIDTH(WIDTH_FFT)) Mod_FFT_Mem
 PingPongMem_MOD #(.MEM_DEPTH(MEM_DEPTH_FFT), .DATA_WIDTH(WIDTH_FFT)) Mod_FFT_Mem_i_Block (
     .CLK(clk),
     .RST(reset),
-    EN,
+    .EN(zeyad_enable),
 
     .data_in(Data_Mod_Mem_i),
-    .Last_addr.(Last_addr_Mod),
+    .Last_addr(Last_addr_Mod),
     .write_enable(wrt_enable_Mod),
     .Mod_Valid_OUT(Modulator_valid) ,
     .PINGPONG_SWITCH(PINGPONG_SWITCH) ,  
@@ -275,7 +277,7 @@ DMRS_Mem DMRS_Mem_Block (
     .clk(clk),
     .reset(reset),
     .DMRS_valid(DMRS_valid),
-    .read_ptr(DMRS_ptr);
+    .read_ptr(DMRS_ptr),
     .DMRS_r_in(DMRS_r),
     .DMRS_i_in(DMRS_i),
     .DMRS_r_out(DMRS_r_mem),
@@ -290,7 +292,7 @@ REM_TOP #(.MEM_DEPTH(MEM_DEPTH_IFFT), .WRITE_ADDR_SHIFT(WRITE_ADDR_SHIFT),
    (
     .CLK_RE_TOP(clk) , 
     .RST_RE_TOP(reset) , 
-    EN_RE_TOP ,
+    .EN_RE_TOP(zeyad_enable) ,
 
     .N_sc_TOP(N_sc_start) , // subcarrier starting point
     .N_rb_TOP(N_rb) ,     // no. of RBs allocated
