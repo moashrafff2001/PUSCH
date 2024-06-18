@@ -12,7 +12,9 @@ module Top #(
 
         input [WIDTH-1:0] di_im,
 
-        input Flag,done,
+        input Flag,done_slow,
+        
+        input [10:0] last_address,
 
         output  [WIDTH-1:0] do_re,
 
@@ -33,6 +35,7 @@ wire [3:0] stage2;
 wire [2:0] stage3;
 
 wire [1:0] stage5;
+
 wire [10:0] points;
 
 ////////Calc module/////
@@ -165,6 +168,20 @@ reg [7:0] fft_from5_to3_counter;
 
 wire pulse3;
 
+wire done;
+
+pulse_gen P0(
+    
+        .bus_enable(done_slow),
+    
+        .clk(clk),
+    
+        .rst(rst),
+    
+        .enable(done)
+    
+    );
+
 which_stages which_stage(
 
     .flag(Flag),
@@ -174,6 +191,8 @@ which_stages which_stage(
     .reset(rst),
 
     .clk(clk),
+
+    .last_address(last_address),
 
     .stages2(stage2),
 
