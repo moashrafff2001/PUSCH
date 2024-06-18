@@ -70,16 +70,28 @@ module CRC #(parameter SEED = 16'h0000)
     end
   end
   
+  reg counter_flag; 
+  
   // counter to count the output bits to high Valid flag after finish
   always @(posedge CLK or negedge RST) begin
     if (!RST)
+    begin
       count <= 5'b10000;
+      counter_flag <= 0;
+    end
     else if (ACTIVE)
+    begin
       count <= 5'b0;
-    else if (!count_max)
+      counter_flag <= 1;
+    end
+    
+    if ((!count_max) && (counter_flag))
       count <= count + 5'b1;
     else if (count_max)
+    begin
       count <= 0;
+      counter_flag <= 0;
+    end
     else
       count <= 0;
   end
