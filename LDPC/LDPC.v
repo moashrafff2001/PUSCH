@@ -861,17 +861,9 @@ end
 
 parameter shift=105%zc;
 reg[zc-1:0]pa_c;
-always @(posedge CLK or negedge RST) begin
-     if(!RST)
-          begin
-           data_out<='b0;
-           Valid <= 1'b0;
-          end
-          else
-           if(ACTIVE)      
-             begin 
-               
-        if(B_matrix[0][0]==4'b0001)begin 
+
+always @(*) begin
+          if(B_matrix[0][0]==4'b0001)begin 
  pa[0]=lambda[1]^lambda[0]^lambda[2]^lambda[3];
  end
  else if (B_matrix[1][0]==105)begin 
@@ -908,7 +900,17 @@ end
  else begin 
  pa[2]=pa[3]^lambda[2];
  end
- 
+  
+end
+always @(posedge CLK or negedge RST) begin
+     if(!RST)
+          begin
+           data_out<='b0;
+           Valid <= 1'b0;
+          end
+          else
+           if(ACTIVE)      
+             begin 
    for (i = 0; i < 38; i = i + 1) begin
       pc[i]=value[i]^value_2[i];
 end
@@ -955,4 +957,3 @@ always @(posedge CLK or negedge RST) begin
 end
 
 endmodule
-
