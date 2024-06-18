@@ -4,7 +4,7 @@ module CRC #(parameter SEED = 16'h0000)
   input wire RST,          
   input wire DATA,          
   input wire ACTIVE,       
-  output reg [19:0] data_out,     
+  output reg [15:0] data_out,     
   output reg Valid, 
   output reg enable       
 );
@@ -52,7 +52,7 @@ module CRC #(parameter SEED = 16'h0000)
       enable <= 1'b1;
     end else if (count_max) begin
       Valid <= 1'b1;
-      data_out <= {out, DATA};
+      data_out <= out;
       enable <= 1'b1;
     end
     else begin
