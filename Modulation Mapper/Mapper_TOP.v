@@ -3,23 +3,25 @@ module Mapper_TOP#(parameter LUT_WIDTH = 18 , parameter OUT_WIDTH = 36 )(
     input wire Serial_IN , // ex
     input wire CLK_Mod , 
     input wire RST_Mod , 
-    input wire EN_Mod , 
     input wire Valid_Mod_IN , 
     input wire [2:0] Order_Mod ,
 
-    output wire Mem_Done ,
     output wire Mod_Valid_OUT , 
     output wire signed [LUT_WIDTH-1:0] Mod_OUT_I,
     output wire signed [LUT_WIDTH-1:0] Mod_OUT_Q,
 
     output wire MOD_DONE , 
     output wire [10:0] Wr_addr ,
+    output wire [10:0] Last_addr , 
+
     output wire write_enable  , 
     output wire PINGPONG_SWITCH 
     
 
 );
        
+     wire Mem_Done ;
+   
     wire signed [ LUT_WIDTH-1:0] QPSK_I ;
     wire signed [ LUT_WIDTH-1:0] QPSK_Q ;
     wire signed[ LUT_WIDTH-1:0] QAM16_I;
@@ -35,7 +37,6 @@ Mod_Mapper D1(
 
     .CLK_Mod(CLK_Mod) , 
     .RST_Mod(RST_Mod) , 
-    .EN_Mod(EN_Mod) , 
     .Valid_Mod_IN(Valid_Mod_IN) , 
     .Order_Mod(Order_Mod),
     .QPSK_I(QPSK_I),
@@ -44,7 +45,7 @@ Mod_Mapper D1(
     .QAM16_Q(QAM16_Q),
     .QAM64_I(QAM64_I),
     .QAM64_Q(QAM64_Q),
-    
+    .Last_addr(Last_addr) , 
     .EN_QPSK(EN_QPSK) , 
     .EN_QAM16 (EN_QAM16),
     .EN_QAM64(EN_QAM64) ,
