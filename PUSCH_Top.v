@@ -71,7 +71,7 @@ parameter DATA_WIDTH = 36;
 
 ////////////////// Wires connecting between each two blocks //////////////////
 // Between CRC and LDPC
-wire [19:0] Data_CRC_LDPC;
+wire [15:0] Data_CRC_LDPC;
 
 // Between LDPC and HARQ
 wire [127:0] Data_LDPC_HARQ;
@@ -115,7 +115,7 @@ wire Ping_VALID_Q;
 
 //////////////////////// Blocks Instantiations ////////////////////////
 // CRC
-CRC #(.SEED(SEED)) ( 
+CRC #(.SEED(SEED)) CRC_Block ( 
    .CLK(clk) ,          
    .RST(reset) ,          
    .DATA(Data_in) ,         
@@ -130,7 +130,8 @@ CRC #(.SEED(SEED)) (
 LDPC LDPC_Block (
     .CLK(clk),
     .RST(reset),
-    .DATA(Data_CRC_LDPC),
+    .DATA(Data_in),
+    .CRC_bits(Data_CRC_LDPC),
     .ACTIVE(CRC_valid),
     .data_out(Data_LDPC_HARQ),          
     .Valid(LDPC_valid)   
@@ -144,7 +145,7 @@ RateMatching_and_HARQ RateMatching_and_HARQ_Block (
     .Active(LDPC_valid),
     .base_graph(base_graph),        // Base graph selection (1 or 2)
     .Z(Z_harq),                     // lifting factor
-    .data_in(data_LDPC_HARQ),       // Input data stream
+    .data_in(Data_LDPC_HARQ),       // Input data stream
     .RV(rv_number),                 // Redundancy Version (0, 1, 2, or 3)
     .PN(process_number),            // process number (0, 1, 2, or 3)
     .data_size(data_size_harq),     // total size of the ip data given from the LDPC
@@ -167,7 +168,7 @@ interleaver interleaver_Block (
     .data_not_repeated(data_not_repeated)
 );
 
-
+/*
 // Scrambler
 SC_TOP Scrambler_Block ( 
     .CLK_TOP(clk) , 
@@ -337,5 +338,5 @@ IFFT_CP_TOP #(.WIDTH(WIDTH_IFFT)) IFFT_Block
 );
 
 
-
+*/
 endmodule
