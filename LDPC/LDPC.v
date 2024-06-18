@@ -8,7 +8,6 @@ module LDPC #(parameter zc = 2, parameter kb = 10,parameter width =50,parameter 
     output     reg                      Valid   
 );
 reg [(kb*zc)-1:0] message;
-reg   [size-1:0] result;
 reg [3:0] A_matrix[3:0][kb-1:0];
 reg [3:0] B_matrix[3:0][3:0];
 reg [3:0] C1_matrix[37:0][kb-1:0];
@@ -923,7 +922,7 @@ begin
         end
       else if (enable) 
         begin
-          result<={pc[37],pc[36],pc[35],pc[34],pc[33],pc[32],pc[31],pc[30],pc[29],pc[28],pc[27],pc[26],pc[25],pc[24],pc[23],pc[22],pc[21],pc[20],pc[19],pc[18],pc[17],pc[16],pc[15],pc[14],pc[13],pc[12],pc[11],pc[10],pc[9],pc[8],pc[7],pc[6],pc[5],pc[4],pc[3],pc[2],pc[1],pc[0],pa[3],pa[2],pa[1],pa[0],message[10*zc-1:2*zc]};
+          data_out <={pc[37],pc[36],pc[35],pc[34],pc[33],pc[32],pc[31],pc[30],pc[29],pc[28],pc[27],pc[26],pc[25],pc[24],pc[23],pc[22],pc[21],pc[20],pc[19],pc[18],pc[17],pc[16],pc[15],pc[14],pc[13],pc[12],pc[11],pc[10],pc[9],pc[8],pc[7],pc[6],pc[5],pc[4],pc[3],pc[2],pc[1],pc[0],pa[3],pa[2],pa[1],pa[0],message[10*zc-1:2*zc]};
           Valid <= 1'b1;
           enable <= 0;					  
         end 
@@ -931,39 +930,6 @@ begin
         begin
           Valid <= 0;
         end
-end
-        
-reg [127:0] temp_result; 
-
-always @(posedge CLK or negedge RST) begin
-  if (!RST) begin
-    data_out <= 0; 
-  end 
-  else if (Valid) begin
-    if (size > 128) begin
-      for (i = 0; i < size; i = i + 128) begin
-        if (i + 128 <= size) begin
-          data_out <= result[i + 127 -: 128];
-        end
-         else begin
-          // Initialize temp_result to 0
-          temp_result = 0;
-          // Copy the remaining bits from result to temp_result
-          for (j = 0; j < (size - i); j = j + 1) begin
-            temp_result[j] = result[i + j];
-          end
-          data_out <= temp_result;
-        end
-      end
-    end 
-    else begin
-      data_out = 'b0;
-      data_out[(100 - 1):0] = result;
-    end
-  end 
-  else begin
-    data_out <= 0; 
-  end
 end
 
 endmodule
