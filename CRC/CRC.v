@@ -26,7 +26,9 @@ module CRC #(parameter SEED = 16'h0000)
       data_out <= 'b0;
       Valid <= 1'b0;
       enable <= 1'b0;
-    end else if (ACTIVE) begin 
+    end 
+    else if (ACTIVE) 
+    begin 
       LFSR[0]  <= Feedback;
       LFSR[1]  <= LFSR[0];
       LFSR[2]  <= LFSR[1];
@@ -45,17 +47,23 @@ module CRC #(parameter SEED = 16'h0000)
       LFSR[15] <= LFSR[14];
       Valid <= 1'b0;
       enable <= 1'b1;
-    end else if (!count_max) begin  
-     dataout <= LFSR[15]; 
- LFSR[15:0] <= {LFSR[14:0],1'b0};  
+    end 
+    else if (!count_max) 
+    begin  
+      dataout <= LFSR[15]; 
+      LFSR[15:0] <= {LFSR[14:0],1'b0};  
       out <= {LFSR[15], out[15:1]};
       enable <= 1'b1;
-    end else if (count_max) begin
+      Valid <= 1'b0;
+    end 
+    else if (count_max) 
+    begin
       Valid <= 1'b1;
       data_out <= out;
       enable <= 1'b1;
     end
-    else begin
+    else 
+    begin
       Valid <= 1'b0;
       data_out <= 'b0;
       enable <= 1'b0;
@@ -70,10 +78,12 @@ module CRC #(parameter SEED = 16'h0000)
       count <= 5'b0;
     else if (!count_max)
       count <= count + 5'b1;
+    else if (count_max)
+      count <= 0;
+    else
+      count <= 0;
   end
 
   assign count_max = (count == 5'b10000);
 
 endmodule
-
-
