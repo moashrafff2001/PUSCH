@@ -49,7 +49,8 @@ module RateMatching_and_HARQ (
     reg [31:0] cycle_counter;
     reg [16:0] starting_value;      // to save the count (easy debug purpose)
     reg [9:0] cycle_repeat;        // reg to determine number of repeated cycles in the repetation case
-
+    
+    reg enable_read_flag;
     always @(posedge clk or posedge rst) 
     begin
         if (!rst)
@@ -93,161 +94,169 @@ module RateMatching_and_HARQ (
                 RV_ID_counter <= 0;
 
                 cycle_repeat <= 0;
+
+                enable_read_flag <= 0;
+
             end
 
-        else if (Active) // matrix filling 
+        else 
             begin
-/*                RVs_base_graph_1[0] <= 0;
-                RVs_base_graph_1[1] <= 17 * Z;
-                RVs_base_graph_1[2] <= 33 * Z;
-                RVs_base_graph_1[3] <= 56 * Z;
-                
-                RVs_base_graph_2[0] <= 0;
-                RVs_base_graph_2[1] <= 13 * Z;
-                RVs_base_graph_2[2] <= 25 * Z;
-                RVs_base_graph_2[3] <= 43 * Z;
-*/
-                case (PN)
-                    1:mem1[write_addr_row][write_addr_col] <= data_in;
-                    2:mem2[write_addr_row][write_addr_col] <= data_in;
-                    3:mem3[write_addr_row][write_addr_col] <= data_in;
-                    4:mem4[write_addr_row][write_addr_col] <= data_in;
-                    5:mem5[write_addr_row][write_addr_col] <= data_in;
-                    6:mem6[write_addr_row][write_addr_col] <= data_in;
-                    7:mem7[write_addr_row][write_addr_col] <= data_in;
-                    8:mem8[write_addr_row][write_addr_col] <= data_in;
-                endcase
+                if (Active) // matrix filling 
+                    begin
+                        enable_read_flag <= 1;
+        /*              RVs_base_graph_1[0] <= 0;
+                        RVs_base_graph_1[1] <= 17 * Z;
+                        RVs_base_graph_1[2] <= 33 * Z;
+                        RVs_base_graph_1[3] <= 56 * Z;
                         
-                // Check for end of row
-                if (write_addr_col == NUM_COLS - 1) 
-                    begin
-                        // Wrap around to next row if end of current row
-                        write_addr_row <= write_addr_row + 1;
-                        write_addr_col <= 0;
-                    end 
-                else 
-                    begin
-                        // Increment column within same row
-                        write_addr_col <= write_addr_col + 1;
+                        RVs_base_graph_2[0] <= 0;
+                        RVs_base_graph_2[1] <= 13 * Z;
+                        RVs_base_graph_2[2] <= 25 * Z;
+                        RVs_base_graph_2[3] <= 43 * Z;
+        */
+                        case (PN)
+                            1:mem1[write_addr_row][write_addr_col] <= data_in;
+                            2:mem2[write_addr_row][write_addr_col] <= data_in;
+                            3:mem3[write_addr_row][write_addr_col] <= data_in;
+                            4:mem4[write_addr_row][write_addr_col] <= data_in;
+                            5:mem5[write_addr_row][write_addr_col] <= data_in;
+                            6:mem6[write_addr_row][write_addr_col] <= data_in;
+                            7:mem7[write_addr_row][write_addr_col] <= data_in;
+                            8:mem8[write_addr_row][write_addr_col] <= data_in;
+                        endcase
+                                
+                        // Check for end of row
+                        if (write_addr_col == NUM_COLS - 1) 
+                            begin
+                                // Wrap around to next row if end of current row
+                                write_addr_row <= write_addr_row + 1;
+                                write_addr_col <= 0;
+                            end 
+                        else 
+                            begin
+                                // Increment column within same row
+                                write_addr_col <= write_addr_col + 1;
+                            end
+
+                        // Increment write counter
+                        write_counter <= write_counter + 128;
                     end
-
-                // Increment write counter
-                write_counter <= write_counter + 128;
-            end
-        else // reading from the matrix and perform the operations (trancation or repeating) 
-            begin
-                if (cycle_counter == G)
+                else // reading from the matrix and perform the operations (trancation or repeating) 
                     begin
-                        // Reset read pointer if all data has been read
-                        read_addr_row <= 0;
-                        read_addr_col <= 0;
-                        read_addr_bit <= 0;
-                        read_counter <= 0;
-                        valid_out <= 0;
-                        cycle_repeat <= 0;
-                    end 
-                else
-                    begin
-                        valid_out <= 1;
-                        
-                        // updating the reading addresses 
-                        if ( (RV_ID_counter == 0) && (read_addr_col == 0) && (read_addr_row == 0) && (read_addr_bit == 0) && (read_counter == 1)) // =1 to not enter the if condition of %(data_size) as 0%data_size = 0
+                        if ( (enable_read_flag == 1) && (cycle_counter < G) )
                             begin
-                                // Initial assignment
-                                read_addr_col <= column_index; //3
-                                read_addr_row <= row_index; //1
-                                read_addr_bit <= bit_index; //36
-                                cycle_repeat  <= 0;
-                            end
-                        else if (read_counter % (data_size) == 0)
-                            begin
-                                read_addr_row <= 0;
-                                read_addr_col <= 0; 
-                                read_addr_bit <= 0;
-                                cycle_repeat  <= cycle_repeat + 1;
-                                cycle_counter <= cycle_counter + 1;                                       
-                            end
-                        else
-                            begin
-                                // Increment read address
-                                if (read_addr_bit == CELL_WIDTH - 1)
+                                valid_out <= 1;
+                                
+                                // updating the reading addresses 
+                                if ( (RV_ID_counter == 0) && (read_addr_col == 0) && (read_addr_row == 0) && (read_addr_bit == 0) ) // =1 to not enter the if condition of %(data_size) as 0%data_size = 0
                                     begin
-                                        // Reset bit index to 0 when it reaches 128 bits
+                                        // Initial assignment
+                                        read_addr_col <= column_index; //3
+                                        read_addr_row <= row_index; //1
+                                        read_addr_bit <= bit_index; //36
+                                        cycle_repeat  <= 0;
+                                    end
+                                else if (read_counter % (data_size) == 0)
+                                    begin
+                                        read_addr_row <= 0;
+                                        read_addr_col <= 0; 
                                         read_addr_bit <= 0;
-                                        
-                                        // Check for end of row
-                                        if (read_addr_col == NUM_COLS - 1) 
-                                            begin
-                                                // Wrap around to next row if end of current row
-                                                read_addr_row <= read_addr_row + 1;
-                                                read_addr_col <= 0;
-                                            end 
-                                        else 
-                                            begin
-                                                // Increment column within same row
-                                                read_addr_col <= read_addr_col + 1;
-                                            end
+                                        cycle_repeat  <= cycle_repeat + 1;
+                                        cycle_counter <= cycle_counter + 1;                                       
                                     end
                                 else
                                     begin
-                                        // Increment bit index
-                                        read_addr_bit <= read_addr_bit + 1;
+                                        // Increment read address
+                                        if (read_addr_bit == CELL_WIDTH - 1)
+                                            begin
+                                                // Reset bit index to 0 when it reaches 128 bits
+                                                read_addr_bit <= 0;
+                                                
+                                                // Check for end of row
+                                                if (read_addr_col == NUM_COLS - 1) 
+                                                    begin
+                                                        // Wrap around to next row if end of current row
+                                                        read_addr_row <= read_addr_row + 1;
+                                                        read_addr_col <= 0;
+                                                    end 
+                                                else 
+                                                    begin
+                                                        // Increment column within same row
+                                                        read_addr_col <= read_addr_col + 1;
+                                                    end
+                                            end
+                                        else
+                                            begin
+                                                // Increment bit index
+                                                read_addr_bit <= read_addr_bit + 1;
+                                            end
                                     end
-                            end
 
-                        // sending the RV_ID first 
-                        if (RV_ID_counter < 1) // the RV_ID is only 2 bits so this if condition will only applied twice 0,1 
-                            begin
-                                case (RV)
-                                    0:
+                                // sending the RV_ID first 
+                                if (RV_ID_counter < 1) // the RV_ID is only 2 bits so this if condition will only applied twice 0,1 
                                     begin
-                                        op_RV_bit <= 0; 
-                                        read_counter  <= starting_value + 1;
-                                        cycle_counter <= cycle_counter + 1;
+                                        case (RV)
+                                            0:
+                                            begin
+                                                op_RV_bit <= 0;
+                                                read_counter  <= starting_value + 1;
+                                                cycle_counter <= cycle_counter + 1;
+                                            end
+                                            1:
+                                            begin
+                                                op_RV_bit <= 1;
+                                                read_counter  <= starting_value + 1;
+                                                cycle_counter <= cycle_counter + 1;
+                                            end 
+                                            2:
+                                            begin
+                                                op_RV_bit <= 0;
+                                                @(posedge clk);
+                                                op_RV_bit <= 1;
+                                                read_counter  <= starting_value + 2;
+                                                cycle_counter <= cycle_counter + 2;
+                                            end 
+                                            3:
+                                            begin
+                                                op_RV_bit <= 1;
+                                                @(posedge clk);
+                                                op_RV_bit <= 1;
+                                                read_counter  <= starting_value + 1;
+                                                cycle_counter <= cycle_counter + 1;
+                                            end 
+                                        endcase        
+                                        RV_ID_counter = RV_ID_counter +1;
                                     end
-                                    1:
+                                else // sending the data
                                     begin
-                                        op_RV_bit <= 1; 
-                                        read_counter  <= starting_value + 1;
-                                        cycle_counter <= cycle_counter + 1;
-                                    end 
-                                    2:
-                                      begin
-                                           op_RV_bit <= 0;
-                                           @(posedge clk);
-                                           op_RV_bit <= 1;
-                                           read_counter  <= starting_value + 2;
-                                           cycle_counter <= cycle_counter + 2;
-                                       end 
-                                    3:
-                                      begin
-                                           op_RV_bit <= 1;
-                                           @(posedge clk);
-                                           op_RV_bit <= 1;
-                                           read_counter  <= starting_value + 1;
-                                           cycle_counter <= cycle_counter + 1;
-                                       end 
-                                endcase        
-                                RV_ID_counter = RV_ID_counter +1;
-                            end
-                        else // sending the data
-                            begin
-                                case (PN)
-                                    1:op_RV_bit <= mem1[read_addr_row][read_addr_col][read_addr_bit]; 
-                                    2:op_RV_bit <= mem2[read_addr_row][read_addr_col][read_addr_bit]; 
-                                    3:op_RV_bit <= mem3[read_addr_row][read_addr_col][read_addr_bit]; 
-                                    4:op_RV_bit <= mem4[read_addr_row][read_addr_col][read_addr_bit]; 
-                                    5:op_RV_bit <= mem5[read_addr_row][read_addr_col][read_addr_bit]; 
-                                    6:op_RV_bit <= mem6[read_addr_row][read_addr_col][read_addr_bit]; 
-                                    7:op_RV_bit <= mem7[read_addr_row][read_addr_col][read_addr_bit]; 
-                                    8:op_RV_bit <= mem8[read_addr_row][read_addr_col][read_addr_bit]; 
-                                endcase 
+                                        case (PN)
+                                            1:op_RV_bit <= mem1[read_addr_row][read_addr_col][read_addr_bit]; 
+                                            2:op_RV_bit <= mem2[read_addr_row][read_addr_col][read_addr_bit]; 
+                                            3:op_RV_bit <= mem3[read_addr_row][read_addr_col][read_addr_bit]; 
+                                            4:op_RV_bit <= mem4[read_addr_row][read_addr_col][read_addr_bit]; 
+                                            5:op_RV_bit <= mem5[read_addr_row][read_addr_col][read_addr_bit]; 
+                                            6:op_RV_bit <= mem6[read_addr_row][read_addr_col][read_addr_bit]; 
+                                            7:op_RV_bit <= mem7[read_addr_row][read_addr_col][read_addr_bit]; 
+                                            8:op_RV_bit <= mem8[read_addr_row][read_addr_col][read_addr_bit]; 
+                                        endcase 
 
-                                read_counter <= read_counter + 1;  
-                                cycle_counter <= cycle_counter + 1; 
-                            end                                                                   
+                                        read_counter <= read_counter + 1;  
+                                        cycle_counter <= cycle_counter + 1; 
+                                    end                                                                   
+                            end
+                        else 
+                            begin
+                                // Reset read pointer if all data has been read
+                                read_addr_row <= 0;
+                                read_addr_col <= 0;
+                                read_addr_bit <= 0;
+                                read_counter <= 0;
+                                valid_out <= 0;
+                                cycle_repeat <= 0;
+                                enable_read_flag <= 0;
+                            end
+                        
                     end
-                
             end
     end
 
