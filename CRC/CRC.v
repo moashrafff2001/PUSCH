@@ -85,7 +85,7 @@ module CRC #(parameter SEED = 16'h0000)
       counter_flag <= 1;
     end
     
-    if ((!count_max) && (counter_flag))
+    else if ((!count_max) && (counter_flag))
       count <= count + 5'b1;
     else if (count_max)
     begin
