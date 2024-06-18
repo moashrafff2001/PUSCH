@@ -902,26 +902,36 @@ end
  end
   
 end
-always @(posedge CLK or negedge RST) begin
+
+reg enable;
+
+always @(posedge CLK or negedge RST) 
+begin
      if(!RST)
           begin
            data_out<='b0;
            Valid <= 1'b0;
+           enable <= 0;
           end
-          else
-           if(ACTIVE)      
-             begin 
-   for (i = 0; i < 38; i = i + 1) begin
-      pc[i]=value[i]^value_2[i];
+     else if(ACTIVE)      
+        begin 
+          enable <= 1; 
+          for (i = 0; i < 38; i = i + 1) 
+          begin
+              pc[i]=value[i]^value_2[i];
+          end
+        end
+      else if (enable) 
+        begin
+          result<={pc[37],pc[36],pc[35],pc[34],pc[33],pc[32],pc[31],pc[30],pc[29],pc[28],pc[27],pc[26],pc[25],pc[24],pc[23],pc[22],pc[21],pc[20],pc[19],pc[18],pc[17],pc[16],pc[15],pc[14],pc[13],pc[12],pc[11],pc[10],pc[9],pc[8],pc[7],pc[6],pc[5],pc[4],pc[3],pc[2],pc[1],pc[0],pa[3],pa[2],pa[1],pa[0],message[10*zc-1:2*zc]};
+          Valid <= 1'b1;
+          enable <= 0;					  
+        end 
+      else
+        begin
+          Valid <= 0;
+        end
 end
-   end
- else begin
-   result<={pc[37],pc[36],pc[35],pc[34],pc[33],pc[32],pc[31],pc[30],pc[29],pc[28],pc[27],pc[26],pc[25],pc[24],pc[23],pc[22],pc[21],pc[20],pc[19],pc[18],pc[17],pc[16],pc[15],pc[14],pc[13],pc[12],pc[11],pc[10],pc[9],pc[8],pc[7],pc[6],pc[5],pc[4],pc[3],pc[2],pc[1],pc[0],pa[3],pa[2],pa[1],pa[0],message[10*zc-1:2*zc]};
-   Valid <= 1'b1;
-    						  
-             end 
-           
-      end
         
 reg [127:0] temp_result; 
 
