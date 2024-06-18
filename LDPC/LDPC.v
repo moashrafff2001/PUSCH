@@ -1,11 +1,10 @@
-
 module LDPC #(parameter zc = 2, parameter kb = 10,parameter width =50,parameter size =width*zc ) (
     input CLK,
     input RST,
     input DATA,
     input [15:0] CRC_bits,
     input ACTIVE ,
-    output     reg   [127-1:0]                   data_out,          
+    output     reg   [128-1:0]                   data_out,          
     output     reg                      Valid   
 );
 reg [(kb*zc)-1:0] message;
@@ -922,17 +921,17 @@ end
            
       end
         
-reg [126:0] temp_result; 
+reg [127:0] temp_result; 
 
 always @(posedge CLK or negedge RST) begin
   if (!RST) begin
     data_out <= 0; 
   end 
   else if (Valid) begin
-    if (size > 127) begin
-      for (i = 0; i < size; i = i + 127) begin
-        if (i + 127 <= size) begin
-          data_out <= result[i + 126 -: 127];
+    if (size > 128) begin
+      for (i = 0; i < size; i = i + 128) begin
+        if (i + 128 <= size) begin
+          data_out <= result[i + 127 -: 128];
         end
          else begin
           // Initialize temp_result to 0
