@@ -2,18 +2,23 @@
 module LDPC #(parameter zc = 2, parameter kb = 10,parameter width =50,parameter size =width*zc ) (
     input CLK,
     input RST,
-    input[(kb*zc)-1:0] DATA,
+    input DATA,
+    input [15:0] CRC_bits,
     input ACTIVE ,
-    input enable,
     output     reg   [127-1:0]                   data_out,          
     output     reg                      Valid   
 );
+reg [(kb*zc)-1:0] message;
 reg   [size-1:0] result;
 reg [3:0] A_matrix[3:0][kb-1:0];
 reg [3:0] B_matrix[3:0][3:0];
 reg [3:0] C1_matrix[37:0][kb-1:0];
 reg [3:0] D_matrix[37:0][3:0];
 
+always @ (*) begin
+    message = 'b0;
+    message={CRC_bits,DATA};
+end
 
 //always @(*) begin
 initial begin
@@ -776,7 +781,7 @@ reg s[kb-1:0][zc-1:0];
 always @(*) begin
   for (i = 0; i < kb; i = i + 1) begin
             for (j = 0; j < zc; j = j + 1) begin
-                s[i][j] <= DATA[i*zc+j];  
+                s[i][j] <= message[i*zc+j];  
             end
         end
       end
@@ -909,15 +914,12 @@ end
       pc[i]=value[i]^value_2[i];
 end
    end
- else if(enable) begin
-   result<={pc[37],pc[36],pc[35],pc[34],pc[33],pc[32],pc[31],pc[30],pc[29],pc[28],pc[27],pc[26],pc[25],pc[24],pc[23],pc[22],pc[21],pc[20],pc[19],pc[18],pc[17],pc[16],pc[15],pc[14],pc[13],pc[12],pc[11],pc[10],pc[9],pc[8],pc[7],pc[6],pc[5],pc[4],pc[3],pc[2],pc[1],pc[0],pa[3],pa[2],pa[1],pa[0],DATA[10*zc-1:2*zc]};
+ else begin
+   result<={pc[37],pc[36],pc[35],pc[34],pc[33],pc[32],pc[31],pc[30],pc[29],pc[28],pc[27],pc[26],pc[25],pc[24],pc[23],pc[22],pc[21],pc[20],pc[19],pc[18],pc[17],pc[16],pc[15],pc[14],pc[13],pc[12],pc[11],pc[10],pc[9],pc[8],pc[7],pc[6],pc[5],pc[4],pc[3],pc[2],pc[1],pc[0],pa[3],pa[2],pa[1],pa[0],message[10*zc-1:2*zc]};
    Valid <= 1'b1;
     						  
              end 
-           else begin 
-             result<='b0;
-             Valid<='b0;
-        end
+           
       end
         
 reg [126:0] temp_result; 
@@ -954,3 +956,4 @@ always @(posedge CLK or negedge RST) begin
 end
 
 endmodule
+
